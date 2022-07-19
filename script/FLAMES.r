@@ -20,7 +20,7 @@ Whitelist = "path_to_whitelsit"
 fastq = "path_to_fastq"
 
 ###out_dirs
-output = "apth_to_output_dir"
+output = "path_to_output_dir"
 
 ####Inputs that don't change
 ####referecne files 
@@ -29,5 +29,5 @@ genome = "hg38.fa"
 
 minimap2_dir="path_to_minimap"
 
-####Comand for Q20 -> BLAZE
+# Run FLAMES
 sce <- sc_long_pipeline(fastq=fastq, outdir=output, reference_csv=Whitelist, annot=GTF, genome_fa=genome, match_barcode=TRUE, MAX_DIST=2, has_UMI=TRUE, minimap2_dir=minimap2_dir)
