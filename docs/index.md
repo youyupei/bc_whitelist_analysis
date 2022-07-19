@@ -1,5 +1,5 @@
 # BLAZE analysis
-This page contains the scripts/codes accociated to the analysis in [BLAZE paper]
+This page contains the scripts/codes accociated to the analysis in [BLAZE paper: doi:]
 
 ## Analysis on whitelist
 * [scmixology 2](scmixology_data_analysis.html)
