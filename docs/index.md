@@ -1,7 +1,7 @@
 # BLAZE analysis
-This page contains the scripts/codes accociated to the analysis in [BLAZE paper: doi:]
+This page contains the scripts/codes accociated to the analysis in manuscript "Identification of cell barcodes from long-read sc-RNAseq with BLAZE".
 
-## Analysis on whitelist
+## Analysis on whitelists from different tools with the following datasets:
 * [scmixology 2](scmixology_data_analysis.html)
 * [hiPSC GridION Q20 kit](hiPSC_diff_gridion_q20_analysis.html)
 * [hiPSC GridION LSK110 kit](hiPSC_diff_gridion_lsk110_analysis.html)
