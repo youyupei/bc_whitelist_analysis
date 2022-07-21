@@ -125,12 +125,12 @@ plot_umap <- function(count.matrix, min.features = 200,max.feature = 999999999, 
 ```{r, message=FALSE, warning=FALSE, fig.width=15,fig.height = 10}
 
 # Cellranger
-plots <- plot_umap(gene_C_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Gene Counts, Q20 data)')
+plots <- plot_umap(gene_B_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Gene Counts, promith)')
 
-umap_object_C <- plots[[2]]
+umap_object_B <- plots[[2]]
 
 #Find MArkers 
-markers <- FindAllMarkers(object = umap_object_C, 
+markers <- FindAllMarkers(object = umap_object_B, 
                           only.pos = TRUE,
                           logfc.threshold = 0.25)
 
