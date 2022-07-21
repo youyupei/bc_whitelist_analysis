@@ -120,11 +120,11 @@ plot_umap <- function(count.matrix, min.features = 200,max.feature = 999999999, 
 }
 ```
 
-## Part 2: Promith DATA -\> Cell Ranger Genes
+## Part 2: Promith DATA -\> BLAZE Genes
 
 ```{r, message=FALSE, warning=FALSE, fig.width=15,fig.height = 10}
 
-# Cellranger
+# BLAZE
 plots <- plot_umap(gene_B_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Gene Counts, promith)')
 
 umap_object_B <- plots[[2]]
