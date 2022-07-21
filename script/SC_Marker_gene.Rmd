@@ -150,8 +150,8 @@ write.csv(Markers_C3, "Markers_C3_lFC>1_padj<0.05.csv")
 #CUX1
 #VGlut1
 #GFAP
-FeaturePlot(umap_object_C, features = c("ENSG00000007372.23", "ENSG00000176165.10", "ENSG00000026025.16", "ENSG00000257923.11", "ENSG00000104888.10", "ENSG00000131095.13","ENSG00000124785.9"))
+FeaturePlot(umap_object_B, features = c("ENSG00000007372.23", "ENSG00000176165.10", "ENSG00000026025.16", "ENSG00000257923.11", "ENSG00000104888.10", "ENSG00000131095.13","ENSG00000124785.9"))
 
-# Top hits from Marker_C3 list taht are transcription factors known to be upregualted in differentiating cells. 
-FeaturePlot(umap_object_C, features = c("ENSG00000162374.17", "ENSG00000124785.9", "ENSG00000171786.6", "ENSG00000148123.15"))
+# Top hits from Marker_C3 list thatt are transcription factors known to be upregualted in differentiating cells or Neuron specific genes. 
+FeaturePlot(umap_object_B, features = c("ENSG00000162374.17", "ENSG00000124785.9", "ENSG00000171786.6", "ENSG00000148123.15"))
 ```
