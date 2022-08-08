@@ -1,0 +1,509 @@
+---
+title: "UMAP plots"
+author: "Yupei"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+    number_sections: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T)
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(Matrix)
+library(ggplot2)
+library(gridExtra)
+library(stringr)
+library(gridExtra)
+library(grid)
+```
+
+
+```{r input file, echo=T}
+# BLAZE q20
+trans_B_q20 <- 'data/trans_count_B+F_q20_rebase.csv'
+gene_B_q20 <- 'data/gene_count_B+F_q20_rebase.csv'
+# BLAZE non q20 GridIon
+trans_B_nonq20_gd <- 'data/trans_count_B+F_q20_rebase.csv'
+gene_B_nonq20_gd <- 'data/gene_count_B+F_q20_rebase.csv'
+# BLAZE non q20 PromithIon
+trans_B_nonq20_pmth <- 'data/trans_count_B+F_promith.csv'
+gene_B_nonq20_pmth <- 'data/gene_count_B+F_promith.csv'
+# BLAZE Matt data
+trans_B_matt <- 'data/trans_count_B+F_matt.csv'
+gene_B_matt <- 'data/gene_count_B+F_matt.csv'
+
+# Cellranger q20
+trans_C_q20 <- 'data/trans_count_C+F_q20_rebase.csv'
+gene_C_q20 <- 'data/gene_count_C+F_q20_rebase.csv'
+# Cellranger non q20 GridIon
+trans_C_nonq20_gd <- 'data/trans_count_C+F_non_q20_rebase.csv'
+gene_C_nonq20_gd <- 'data/gene_count_C+F_non_q20_rebase.csv'
+# Cellranger non q20 PromithIon
+trans_C_nonq20_pmth <- 'data/trans_count_C+F_promith.csv'
+gene_C_nonq20_pmth <- 'data/gene_count_C+F_promith.csv'
+# Cellranger Matt data
+trans_C_matt <- 'data/trans_count_C+F_matt.csv'
+gene_C_matt <- 'data/gene_count_C+F_matt.csv'
+
+
+# Sockeye q20
+trans_S_q20 <- 'data/trans_count_S+F_q20_rebase.csv'
+gene_S_q20 <- 'data/gene_count_S+F_q20_rebase.csv'
+# Sockeye non q20 GridIon
+trans_S_nonq20_gd <- 'data/trans_count_S+F_non_q20_rebase.csv'
+gene_S_nonq20_gd <- 'data/gene_count_S+F_non_q20_rebase.csv'
+# Sockeye non q20 PromithIon
+trans_S_nonq20_pmth <- 'data/trans_count_S+F_promith.csv'
+gene_S_nonq20_pmth <- 'data/gene_count_S+F_promith.csv'
+# Sockeye Matt data
+trans_S_matt <- 'data/trans_count_S+F_matt.csv'
+gene_S_matt <- 'data/gene_count_S+F_matt.csv'
+```
+
+```{r plot func}
+plot_umap_matt <- function(count.matrix, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7, fig_name = ''){
+
+  # init 
+  rst_figures <- list()
+  rst_table = data.frame()
+
+    counts <- read.csv(count.matrix)
+    seurat_object <- CreateSeuratObject(counts = counts, project = "singlecell", min.cells = 3,min.features=1)
+    rst_table <- rbind(rst_table, data.frame("Cells"=dim(seurat_object)[2],
+                                             "median feature per Cell"=median(seurat_object$nFeature_RNA), row.names = paste0('min features > 0'),check.names = FALSE))
+    seurat_object <- CreateSeuratObject(counts = counts, project = "singlecell", min.cells = 3, min.features = min.features)
+
+    
+    #remove unwanted cells. below are default settings but you can modify these
+    seurat_object <- subset(seurat_object, subset = nFeature_RNA > min.features & nFeature_RNA < max.feature) 
+        rst_table <- rbind(rst_table, data.frame("Cells"=dim(seurat_object)[2],
+                                             "median feature per Cell"=median(seurat_object$nFeature_RNA), row.names = paste0('min features > 0', min.features),check.names = FALSE))
+    
+    #now you have removed unwanted cells, it is time to normalize the data. By default, Seurat employs a global-scaling normalization method "LogNormalize" that normalizes the feature expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result.
+    seurat_object <- NormalizeData(seurat_object, normalization.method = "LogNormalize", scale.factor = 10000)
+    #you can alternatively input seurat_object <- NormalizeData(seurat_object) instead of above.
+    #we now identify highly variable features in order to determine a subset of features that exhibit high cell-to-cell 
+    
+    #variation in the dataset.
+    seurat_object <- FindVariableFeatures(seurat_object, selection.method = "vst", nfeatures = 2000)
+    
+    #now we apply a linear transformation (scaling) that is a standard pre-processing step prior to dimensional reduction techniques like PCA
+    all.genes <- rownames(seurat_object)
+    seurat_object <- ScaleData(seurat_object, features = all.genes)
+    #we can visualise both cells and features that define the PCA
+    seurat_object <- RunPCA(seurat_object, features = VariableFeatures(object = seurat_object))
+    #this can be visualised using an Elbow Plot
+    #rst_figures <- append(rst_figures, ElbowPlot(seurat_object))
+    
+    #to cluster cells, I have used the number of sig. PCs that I observed in the above plots. The findneighbors function is for constuction of a KNN graph based on euclidean distance in PCA space and refines edge weights between any two cells based on the shared overlap in their local neighborhoods (jaccard similarity). It uses the input of previously defined dimensionality of the dataset.
+    seurat_object <- FindNeighbors(seurat_object, dims = 1:npc)
+    #now to actually cluster the cells, we apply modularity optimisation techniques (default is Louvain algorithm). The findclusters function contains a resolution parameter which sets the granularity of downstream clustering. Settings are recommended between 0.4-1.2, but may need to be increased for larger datasets.
+    seurat_object <- FindClusters(seurat_object, resolution = cluster_res)
+    
+    #to View metadata
+    #seurat_object@meta.data
+    #run non-linear dimensional reduction (UMAP/tSNE)
+    seurat_object <- RunUMAP(seurat_object, dims = 1:npc)
+    
+    rst_figures <- append(rst_figures, list(DimPlot(seurat_object, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = '') + theme(text = element_text(size = 10))  )) 
+    
+    
+    # add meta data: cluster found by matt 'data/Matt_data_cell_barcodes_and_cluster.csv'
+    df_matt = read.csv('data/cluster_annotation.csv')
+    group_from_matt = unlist(lapply(colnames(seurat_object), function(x){ifelse(x %in% df_matt$barcode_seq,df_matt$groups[df_matt$barcode_seq == x], NA)}))
+    seurat_object <- AddMetaData(seurat_object,  metadata = group_from_matt, col.name = 'group_from_matt')
+    
+    rst_figures <- append(rst_figures, list(
+      DimPlot(seurat_object, reduction = "umap", group.by = 'group_from_matt')+labs(color = str_wrap("Known cell type from Matt's paper",15),title = '')+ theme(text = element_text(size = 10)),
+      FeaturePlot(seurat_object, reduction = "umap", features = 'nCount_RNA')+labs(color = "UMI count",title = '')+ theme(text = element_text(size = 10)),
+    FeaturePlot(seurat_object, reduction = "umap", features = 'nFeature_RNA')+labs(color = str_wrap("Feature count (isoform/gene)",15),title = '')+ theme(text = element_text(size = 10))
+    ))
+    
+    
+    plot_pc <- ElbowPlot(seurat_object)+labs(title = 'SD explained by each PC') + theme(text = element_text(size = 10))
+    plot_umap <- grid.arrange(plot_pc, tableGrob(rst_table), rst_figures[[1]], rst_figures[[2]], rst_figures[[3]], rst_figures[[4]], ncol=2, top=textGrob(fig_name))
+    list(plot_umap)
+}
+```
+
+# Matt data
+
+## UMAPs on transcript count
+### Cellranger + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap_matt(trans_C_matt, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Transcript counts, Matt\'s data)')
+
+```
+
+### Sockeye + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Sockeye
+plots <- plot_umap_matt(trans_S_matt, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Transcript counts, Matt\'s data)')
+
+```
+
+### BLAZE + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+plots <- plot_umap_matt(trans_B_matt, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Transcript counts, Matt\'s data)')
+```
+
+## UMAPs on Gene count
+
+### Cellranger + FLAME
+
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap_matt(gene_C_matt, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7, fig_name = 'Cellranger+FLAME (Gene counts, Matt\'s data)')
+```
+
+### Sockeye + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Sockeye
+plots <- plot_umap_matt(gene_S_matt, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Gene counts, Matt\'s data)')
+```
+
+### BLAZE + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+plots <- plot_umap_matt(gene_B_matt, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Gene counts, Matt\'s data)')
+```
+
+### Sockeye pipeline
+![UAMP from Sockeye pipeline](fig/sockeye_umap_flame.png)
+
+
+```{r}
+plot_umap <- function(count.matrix, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7, fig_name = ''){
+
+  # init 
+  rst_figures <- list()
+  rst_table = data.frame()
+
+    counts <- read.csv(count.matrix)
+    
+    seurat_object <- CreateSeuratObject(counts = counts, project = "singlecell", min.cells = 3, min.features = 0.5)
+    rst_table <- rbind(rst_table, data.frame("Cells"=dim(seurat_object)[2],
+                                             "median feature per Cell"=median(seurat_object$nFeature_RNA), row.names = paste0('min features > 0'),check.names = FALSE))
+    
+    #remove unwanted cells. below are default settings but you can modify these
+    seurat_object <- subset(seurat_object, subset = nFeature_RNA > min.features & nFeature_RNA < max.feature) 
+        rst_table <- rbind(rst_table, data.frame("Cells"=dim(seurat_object)[2],
+                                             "median feature per Cell"=median(seurat_object$nFeature_RNA), row.names = paste0('min features > 0', min.features),check.names = FALSE))
+    
+    #now you have removed unwanted cells, it is time to normalize the data. By default, Seurat employs a global-scaling normalization method "LogNormalize" that normalizes the feature expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result.
+    seurat_object <- NormalizeData(seurat_object, normalization.method = "LogNormalize", scale.factor = 10000)
+    #you can alternatively input seurat_object <- NormalizeData(seurat_object) instead of above.
+    #we now identify highly variable features in order to determine a subset of features that exhibit high cell-to-cell 
+    
+    #variation in the dataset.
+    seurat_object <- FindVariableFeatures(seurat_object, selection.method = "vst", nfeatures = 2000)
+    
+    #now we apply a linear transformation (scaling) that is a standard pre-processing step prior to dimensional reduction techniques like PCA
+    all.genes <- rownames(seurat_object)
+    seurat_object <- ScaleData(seurat_object, features = all.genes)
+    #we can visualise both cells and features that define the PCA
+    seurat_object <- RunPCA(seurat_object, features = VariableFeatures(object = seurat_object))
+    #this can be visualised using an Elbow Plot
+    #rst_figures <- append(rst_figures, ElbowPlot(seurat_object))
+    
+    #to cluster cells, I have used the number of sig. PCs that I observed in the above plots. The findneighbors function is for constuction of a KNN graph based on euclidean distance in PCA space and refines edge weights between any two cells based on the shared overlap in their local neighborhoods (jaccard similarity). It uses the input of previously defined dimensionality of the dataset.
+    seurat_object <- FindNeighbors(seurat_object, dims = 1:npc)
+    #now to actually cluster the cells, we apply modularity optimisation techniques (default is Louvain algorithm). The findclusters function contains a resolution parameter which sets the granularity of downstream clustering. Settings are recommended between 0.4-1.2, but may need to be increased for larger datasets.
+    seurat_object <- FindClusters(seurat_object, resolution = cluster_res)
+    
+    #to View metadata
+    #seurat_object@meta.data
+    #run non-linear dimensional reduction (UMAP/tSNE)
+    seurat_object <- RunUMAP(seurat_object, dims = 1:npc)
+    
+    rst_figures <- append(rst_figures, list(DimPlot(seurat_object, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = '') + theme(text = element_text(size = 10))  )) 
+    
+    
+    rst_figures <- append(rst_figures, list(
+      FeaturePlot(seurat_object, reduction = "umap", features = 'nCount_RNA')+labs(color = "UMI count",title = '')+ theme(text = element_text(size = 10)),
+    FeaturePlot(seurat_object, reduction = "umap", features = 'nFeature_RNA')+labs(color = str_wrap("Feature count (isoform/gene)",15),title = '')+ theme(text = element_text(size = 10))
+    ))
+    
+    
+    plot_pc <- ElbowPlot(seurat_object)+labs(title = 'SD explained by each PC') + theme(text = element_text(size = 10))
+    plot_umap <- grid.arrange(plot_pc, tableGrob(rst_table), rst_figures[[1]], rst_figures[[2]], rst_figures[[3]], ncol=2, top=textGrob(fig_name))
+    list(plot_umap, seurat_object)
+}
+```
+
+# Sefi's Q20 data
+## UMAPs on transcript count
+### Cellranger + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap(trans_C_q20, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Transcript counts, Q20 data)')
+umap_object_C <- plots[[2]]
+```
+
+### Sockeye + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Sockeye
+plots <- plot_umap(trans_S_q20, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Transcript counts, Q20 data)')
+umap_object_S <- plots[[2]]
+```
+
+### BLAZE + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+plots <- plot_umap(trans_B_q20, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Transcript counts, Q20 data)')
+umap_object_B <- plots[[2]]
+```
+
+### Compare the clusters between BLAZE, Sockeye and Cellranger
+With the UMAP plots above, I colored cells in BLAZE or Sockeye plot based on the clusters identified in Cellranger result.
+```{r, message=FALSE, warning=FALSE, fig.width=10,fig.height = 3}
+# cell Ranger    
+
+cluster_map_C = umap_object_C$seurat_clusters
+C_cluster_in_B = unlist(lapply(colnames(umap_object_B), function(x){cluster_map_C[x]}))
+C_cluster_in_S = unlist(lapply(colnames(umap_object_S), function(x){cluster_map_C[x]}))
+
+umap_object_B <- AddMetaData(umap_object_B,  metadata = C_cluster_in_B, col.name = 'c_cluster')
+umap_object_S <- AddMetaData(umap_object_S,  metadata = C_cluster_in_S, col.name = 'c_cluster')
+
+grid.arrange( DimPlot(umap_object_C, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = 'CellRanger') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_B, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'BLAZE') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              top=textGrob('Compare cells among UMAP'), ncol=3)
+
+```
+
+## UMAPs on Gene count
+### Cellranger + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap(gene_C_q20, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Gene counts, Q20 data)')
+umap_object_C <- plots[[2]]
+```
+
+### Sockeye + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Sockeye
+plots <- plot_umap(gene_S_q20, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Gene counts, Q20 data)')
+umap_object_S <- plots[[2]]
+```
+
+### BLAZE + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+plots <- plot_umap(gene_B_q20, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Gene counts, Q20 data)')
+umap_object_B <- plots[[2]]
+```
+
+### Compare the clusters between BLAZE, Sockeye and Cellranger
+With the UMAP plots above, I colored cells in BLAZE or Sockeye plot based on the clusters identified in Cellranger result.
+```{r, message=FALSE, warning=FALSE, fig.width=10,fig.height = 3}
+# cell Ranger    
+
+cluster_map_C = umap_object_C$seurat_clusters
+C_cluster_in_B = unlist(lapply(colnames(umap_object_B), function(x){cluster_map_C[x]}))
+C_cluster_in_S = unlist(lapply(colnames(umap_object_S), function(x){cluster_map_C[x]}))
+
+umap_object_B <- AddMetaData(umap_object_B,  metadata = C_cluster_in_B, col.name = 'c_cluster')
+umap_object_S <- AddMetaData(umap_object_S,  metadata = C_cluster_in_S, col.name = 'c_cluster')
+
+grid.arrange( DimPlot(umap_object_C, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = 'CellRanger') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_B, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'BLAZE') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              top=textGrob('Compare cells among UMAP'), ncol=3)
+
+```
+
+### Sockeye pipeline
+![UAMP from Sockeye pipeline](fig/sockeye_umap_q20_rebase.png)
+
+# Sefi's non-Q20 GridIon data
+## UMAPs on transcript count
+### Cellranger + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap(trans_C_nonq20_gd, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Transcript counts, non-Q20 GridIon data)')
+umap_object_C <- plots[[2]]
+```
+
+### Sockeye + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Sockeye
+plots <- plot_umap(trans_S_nonq20_gd, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Transcript counts, non-Q20 GridIon data)')
+umap_object_S <- plots[[2]]
+```
+
+### BLAZE + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+plots <- plot_umap(trans_B_nonq20_gd, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Transcript counts, non-Q20 GridIon data)')
+umap_object_B <- plots[[2]]
+```
+
+### Compare the clusters between BLAZE, Sockeye and Cellranger
+With the UMAP plots above, I colored cells in BLAZE or Sockeye plot based on the clusters identified in Cellranger result.
+```{r, message=FALSE, warning=FALSE, fig.width=10,fig.height = 3}
+# cell Ranger    
+
+cluster_map_C = umap_object_C$seurat_clusters
+C_cluster_in_B = unlist(lapply(colnames(umap_object_B), function(x){cluster_map_C[x]}))
+C_cluster_in_S = unlist(lapply(colnames(umap_object_S), function(x){cluster_map_C[x]}))
+
+umap_object_B <- AddMetaData(umap_object_B,  metadata = C_cluster_in_B, col.name = 'c_cluster')
+umap_object_S <- AddMetaData(umap_object_S,  metadata = C_cluster_in_S, col.name = 'c_cluster')
+
+grid.arrange( DimPlot(umap_object_C, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = 'CellRanger') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_B, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'BLAZE') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              top=textGrob('Compare cells among UMAP'), ncol=3)
+
+```
+
+## UMAPs on Gene count
+### Cellranger + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap(gene_C_nonq20_gd, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Gene counts, non-Q20 GridIon data)')
+umap_object_C <- plots[[2]]
+```
+
+### Sockeye + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Sockeye
+plots <- plot_umap(gene_S_nonq20_gd, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Gene counts, non-Q20 GridIon data)')
+umap_object_S <- plots[[2]]
+```
+
+### BLAZE + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+plots <- plot_umap(gene_B_nonq20_gd, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Gene counts, non-Q20 GridIon data)')
+umap_object_B <- plots[[2]]
+```
+
+### Compare the clusters among BLAZE, Sockeye and Cellranger
+With the UMAP plots above, I colored cells in BLAZE or Sockeye plot based on the clusters identified in Cellranger result.
+```{r, message=FALSE, warning=FALSE, fig.width=10,fig.height = 3}
+# cell Ranger    
+
+cluster_map_C = umap_object_C$seurat_clusters
+C_cluster_in_B = unlist(lapply(colnames(umap_object_B), function(x){cluster_map_C[x]}))
+C_cluster_in_S = unlist(lapply(colnames(umap_object_S), function(x){cluster_map_C[x]}))
+
+umap_object_B <- AddMetaData(umap_object_B,  metadata = C_cluster_in_B, col.name = 'c_cluster')
+umap_object_S <- AddMetaData(umap_object_S,  metadata = C_cluster_in_S, col.name = 'c_cluster')
+
+grid.arrange( DimPlot(umap_object_C, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = 'CellRanger') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_B, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'BLAZE') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              top=textGrob('Compare cells among UMAP'), ncol=3)
+
+```
+
+### Sockeye pipeline
+![UAMP from Sockeye pipeline](fig/sockeye_umap_nonq20_rebase.png)
+
+# Sefi's non-Q20 PromethIon data
+## UMAPs on transcript count
+### Cellranger + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap(trans_C_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Transcript counts, non-Q20 PromethIon data)')
+umap_object_C <- plots[[2]]
+```
+
+### Sockeye + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Sockeye
+plots <- plot_umap(trans_S_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Transcript counts, non-Q20 PromethIon data)')
+umap_object_S <- plots[[2]]
+```
+
+### BLAZE + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+plots <- plot_umap(trans_B_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Transcript counts, non-Q20 PromethIon data)')
+umap_object_B <- plots[[2]]
+```
+
+### Compare the clusters among BLAZE, Sockeye and Cellranger
+With the UMAP plots above, I colored cells in BLAZE or Sockeye plot based on the clusters identified in Cellranger result.
+```{r, message=FALSE, warning=FALSE, fig.width=10,fig.height = 3}
+# cell Ranger    
+
+cluster_map_C = umap_object_C$seurat_clusters
+C_cluster_in_B = unlist(lapply(colnames(umap_object_B), function(x){cluster_map_C[x]}))
+C_cluster_in_S = unlist(lapply(colnames(umap_object_S), function(x){cluster_map_C[x]}))
+
+umap_object_B <- AddMetaData(umap_object_B,  metadata = C_cluster_in_B, col.name = 'c_cluster')
+umap_object_S <- AddMetaData(umap_object_S,  metadata = C_cluster_in_S, col.name = 'c_cluster')
+
+grid.arrange( DimPlot(umap_object_C, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = 'CellRanger') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_B, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'BLAZE') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              top=textGrob('Compare cells among UMAP'), ncol=3)
+
+```
+
+## UMAPs on Gene count
+### Cellranger + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap(gene_C_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Gene counts, non-Q20 PromethIon data)')
+umap_object_C <- plots[[2]]
+```
+
+### Sockeye + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Sockeye
+plots <- plot_umap(gene_S_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Gene counts, non-Q20 PromethIon data)')
+umap_object_S <- plots[[2]]
+```
+
+### BLAZE + FLAME
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+plots <- plot_umap(gene_B_nonq20_pmth, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Gene counts, non-Q20 PromethIon data)')
+umap_object_B <- plots[[2]]
+```
+
+### Compare the clusters among BLAZE, Sockeye and Cellranger
+With the UMAP plots above, I colored cells in BLAZE or Sockeye plot based on the clusters identified in Cellranger result.
+```{r, message=FALSE, warning=FALSE, fig.width=10,fig.height = 3}
+# cell Ranger    
+
+cluster_map_C = umap_object_C$seurat_clusters
+C_cluster_in_B = unlist(lapply(colnames(umap_object_B), function(x){cluster_map_C[x]}))
+C_cluster_in_S = unlist(lapply(colnames(umap_object_S), function(x){cluster_map_C[x]}))
+
+umap_object_B <- AddMetaData(umap_object_B,  metadata = C_cluster_in_B, col.name = 'c_cluster')
+umap_object_S <- AddMetaData(umap_object_S,  metadata = C_cluster_in_S, col.name = 'c_cluster')
+
+grid.arrange( DimPlot(umap_object_C, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = 'CellRanger') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_B, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'BLAZE') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'c_cluster') + labs(color = "CellRanger cluster", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              top=textGrob('Compare cells among UMAP'), ncol=3)
+
+```
+
+
+### Compare the clusters among BLAZE, Sockeye and Cellranger
+With the UMAP plots above, I colored cells in bnased on Blaze clusters 
+```{r, message=FALSE, warning=FALSE, fig.width=15,fig.height = 6}
+# cell Ranger    
+cluster_map_B = umap_object_B$seurat_clusters
+C_cluster_in_C = unlist(lapply(colnames(umap_object_C), function(x){cluster_map_B[x]}))
+C_cluster_in_S = unlist(lapply(colnames(umap_object_S), function(x){cluster_map_B[x]}))
+
+umap_object_C <- AddMetaData(umap_object_C,  metadata = C_cluster_in_C, col.name = 'B_cluster')
+umap_object_S <- AddMetaData(umap_object_S,  metadata = C_cluster_in_S, col.name = 'B_cluster')
+
+grid.arrange(DimPlot(umap_object_C, reduction = "umap", group.by = 'B_cluster') + labs(color = "BLAZE cluster", title = 'Cell Ranger') + theme(text = element_text(size = 10)), 
+  DimPlot(umap_object_B, reduction = "umap") + labs(color = "BLAZE cluster", title = 'BLAZE') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'B_cluster') + labs(color = "BLAZE cluster", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              top=textGrob('Compare cells among UMAP'), nrow=1)
+
+```
+
+### Sockeye pipeline
+![UAMP from Sockeye pipeline](fig/sockeye_umap_PromethIon.png)
