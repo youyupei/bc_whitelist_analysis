@@ -1,4 +1,4 @@
-This folder contains some script/notebook for the analysis in BLAZE paper
+This folder contains some script/notebook for the analysis in BLAZE paper. The jupyter notebooks (`.ipynb`) contain the comparison among the barcode whitelists from Cell Ranger (using short reads), BLAZE and Sockeye. All the whitelists were used as input to FLAME and the R Markdown(`.Rmd`) files contain the code for generating the UMAP plots.
 
 ### Code used for running Cell Ranger，BLAZE and Sockeye to get the whitelist:
 #### Cell Ranger
