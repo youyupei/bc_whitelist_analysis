@@ -7,7 +7,7 @@ see https://support.10xgenomics.com/single-cell-gene-expression/software/pipelin
 ```
 #### BLAZE
 ```
-python3 get_raw_bc.py --expect-cells=500 --threads=32 <path/to/fastq_pass>
+python3 blaze.py --expect-cells=500 --threads=32 <path/to/fastq_pass>
 ```
 #### Sockeye
 ```
