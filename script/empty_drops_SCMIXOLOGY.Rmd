@@ -1,0 +1,429 @@
+---
+title: "Empty Drops Matt"
+author: "Sefi"
+date: '2022-12-1-7'
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    toc_depth: 4
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(Matrix)
+library("DropletUtils")
+library("BiocParallel")
+library(ggplot2)
+library(stringr)
+library(gridExtra)
+library(grid)
+library(data.table)
+library(tibble)
+require(plyr)
+
+```
+
+
+# Input files
+```{r input files}
+gene_CR_pmth_emptydrops <- 'data/transcript_count_Emptydrops_edit4_CR_Matt.csv'
+gene_CR_pmth <- 'data/trans_count_C+F_matt.csv'
+
+#####
+gene_B_pmth <- 'data/trans_count_B+F_matt.csv'
+gene_B_emptydrops <- 'data/transcript_count_Emptydrops_edit4_B_Matt.csv'
+
+gene_S_pmth_empty <- "data/transcript_count_Emptydrops_edit4_S_Matt.csv"
+gene_S_pmth <- 'data/trans_count_S+F_matt.csv'
+
+
+```
+
+
+# Define function for dgc matrix as input to empty drops fucntion  
+```{r}
+makedgcmatrix <- function(count.matrix){
+
+    counts <- read.csv(count.matrix)
+    
+    seurat_object <- CreateSeuratObject(counts = counts, project = "singlecell", min.cells = 3, min.features = 0.5)
+    
+      list(makedgcmatrix, seurat_object, seurat_object@assays[["RNA"]]@counts, seurat_object@assays[["RNA"]]@data)
+}
+```
+
+
+# Empty drops Analysis
+## Cell Ranger whitelsit plus 5000 empty drops with editdist >4
+```{r}
+
+plots <- makedgcmatrix(gene_CR_pmth_emptydrops)
+
+outs.ddcmatrix <- plots[[3]]
+
+br.out <- barcodeRanks(outs.ddcmatrix)
+
+# Making a plot.
+plot(br.out$rank, br.out$total, log="xy", xlab="Rank", ylab="Total")
+o <- order(br.out$rank)
+lines(br.out$rank[o], br.out$fitted[o], col="red")
+
+abline(h=metadata(br.out)$knee, col="dodgerblue", lty=2)
+abline(h=metadata(br.out)$inflection, col="forestgreen", lty=2)
+abline(h=1000)
+legend("bottomleft", lty=2, col=c("dodgerblue", "forestgreen"), 
+    legend=c("knee", "inflection"))
+
+e.out <- emptyDrops(outs.ddcmatrix, 
+ lower = 100,
+  niters = 10000,
+  test.ambient = TRUE,
+  ignore = NULL,
+  alpha = NULL,
+  round = TRUE,
+  by.rank = NULL,
+  BPPARAM = SerialParam())
+
+summary(e.out$FDR < 0.05)
+
+#diagnostic plot
+is.cell <- e.out$FDR <= 0.05
+sum(is.cell, na.rm=TRUE)
+
+plot(e.out$Total, -e.out$LogProb, col=ifelse(is.cell, "red", "black"),
+    xlab="Total UMI count", ylab="-Log Probability")
+
+#QC to check if permutations should be increased
+table(Limited=e.out$Limited, Significant=is.cell)
+
+#Check the Pvalu distributions 
+set.seed(100)
+limit <- 200   
+
+hist(e.out$PValue[e.out$Total <= limit & e.out$Total > 0],
+    xlab="P-value", main="", col="grey80") 
+
+```
+
+
+
+
+## Sockeyewhitelsit plus 5000 empty drops with editdist >4
+```{r}
+
+plots <- makedgcmatrix(gene_S_pmth_empty)
+
+outs.ddcmatrix <- plots[[3]]
+
+br.out <- barcodeRanks(outs.ddcmatrix)
+
+# Making a plot.
+plot(br.out$rank, br.out$total, log="xy", xlab="Rank", ylab="Total")
+o <- order(br.out$rank)
+lines(br.out$rank[o], br.out$fitted[o], col="red")
+
+abline(h=metadata(br.out)$knee, col="dodgerblue", lty=2)
+abline(h=metadata(br.out)$inflection, col="forestgreen", lty=2)
+legend("bottomleft", lty=2, col=c("dodgerblue", "forestgreen"), 
+    legend=c("knee", "inflection"))
+
+e.out_S <- emptyDrops(outs.ddcmatrix, 
+ lower = 100,
+  niters = 10000,
+  test.ambient = TRUE,
+  ignore = NULL,
+  alpha = NULL,
+  round = TRUE,
+  by.rank = NULL,
+  BPPARAM = SerialParam())
+
+#summary stats
+summary(e.out_S$FDR < 0.05)
+
+#diagnostic plot
+is.cell <- e.out_S$FDR <= 0.05
+sum(is.cell, na.rm=TRUE)
+
+
+plot(e.out_S$Total, -e.out_S$LogProb, col=ifelse(is.cell, "red", "black"),
+    xlab="Total UMI count", ylab="-Log Probability")
+
+#QC to check if permutations should be increased
+table(Limited=e.out_S$Limited, Significant=is.cell)
+
+```
+
+
+
+## BLAZE plus 5000 empty drops with editdist >4
+```{r}
+plots <- makedgcmatrix(gene_B_emptydrops)
+
+outs.ddcmatrix <- plots[[3]]
+
+br.out <- barcodeRanks(outs.ddcmatrix)
+
+# Making a plot.
+plot(br.out$rank, br.out$total, log="xy", xlab="Rank", ylab="Total")
+o <- order(br.out$rank)
+lines(br.out$rank[o], br.out$fitted[o], col="red")
+
+abline(h=metadata(br.out)$knee, col="dodgerblue", lty=2)
+abline(h=metadata(br.out)$inflection, col="forestgreen", lty=2)
+legend("bottomleft", lty=2, col=c("dodgerblue", "forestgreen"), 
+    legend=c("knee", "inflection"))
+
+e.out_B <- emptyDrops(outs.ddcmatrix, 
+ lower = 100,
+  niters = 10000,
+  test.ambient = TRUE,
+  ignore = NULL,
+  alpha = NULL,
+  round = TRUE,
+  by.rank = NULL,
+  BPPARAM = SerialParam())
+
+#summary stats
+summary(e.out_B$FDR < 0.05)
+
+#diagnostic plot
+is.cell.B <- e.out_B$FDR <= 0.05
+sum(is.cell, na.rm=TRUE)
+
+plot(e.out_B$Total, -e.out_B$LogProb, col=ifelse(is.cell, "red", "black"),
+    xlab="Total UMI count", ylab="-Log Probability")
+
+```
+
+
+# Analysis of overlap in empty drops
+
+## Function for UMAP
+```{r plot func}
+plot_umap_matt <- function(count.matrix, min.features = 200,max.feature = 999999999, npc = 5, cluster_res = 0.7, fig_name = ''){
+
+  # init 
+  rst_figures <- list()
+  rst_table = data.frame()
+
+    counts <- read.csv(count.matrix)
+    seurat_object <- CreateSeuratObject(counts = counts, project = "singlecell", min.cells = 3,min.features=1)
+    rst_table <- rbind(rst_table, data.frame("Cells"=dim(seurat_object)[2],
+                                             "median feature per Cell"=median(seurat_object$nFeature_RNA), row.names = paste0('min features > 0'),check.names = FALSE))
+    seurat_object <- CreateSeuratObject(counts = counts, project = "singlecell", min.cells = 3, min.features = min.features)
+
+    
+    #remove unwanted cells. below are default settings but you can modify these
+    seurat_object <- subset(seurat_object, subset = nFeature_RNA > min.features & nFeature_RNA < max.feature) 
+        rst_table <- rbind(rst_table, data.frame("Cells"=dim(seurat_object)[2],
+                                             "median feature per Cell"=median(seurat_object$nFeature_RNA), row.names = paste0('min features > 0', min.features),check.names = FALSE))
+    
+    #now you have removed unwanted cells, it is time to normalize the data. By default, Seurat employs a global-scaling normalization method "LogNormalize" that normalizes the feature expression measurements for each cell by the total expression, multiplies this by a scale factor (10,000 by default), and log-transforms the result.
+    seurat_object <- NormalizeData(seurat_object, normalization.method = "LogNormalize", scale.factor = 10000)
+    #you can alternatively input seurat_object <- NormalizeData(seurat_object) instead of above.
+    #we now identify highly variable features in order to determine a subset of features that exhibit high cell-to-cell 
+    
+    #variation in the dataset.
+    seurat_object <- FindVariableFeatures(seurat_object, selection.method = "vst", nfeatures = 2000)
+    
+    #now we apply a linear transformation (scaling) that is a standard pre-processing step prior to dimensional reduction techniques like PCA
+    all.genes <- rownames(seurat_object)
+    seurat_object <- ScaleData(seurat_object, features = all.genes)
+    #we can visualise both cells and features that define the PCA
+    seurat_object <- RunPCA(seurat_object, features = VariableFeatures(object = seurat_object))
+    #this can be visualised using an Elbow Plot
+    #rst_figures <- append(rst_figures, ElbowPlot(seurat_object))
+    
+    #to cluster cells, I have used the number of sig. PCs that I observed in the above plots. The findneighbors function is for constuction of a KNN graph based on euclidean distance in PCA space and refines edge weights between any two cells based on the shared overlap in their local neighborhoods (jaccard similarity). It uses the input of previously defined dimensionality of the dataset.
+    seurat_object <- FindNeighbors(seurat_object, dims = 1:npc)
+    #now to actually cluster the cells, we apply modularity optimisation techniques (default is Louvain algorithm). The findclusters function contains a resolution parameter which sets the granularity of downstream clustering. Settings are recommended between 0.4-1.2, but may need to be increased for larger datasets.
+    seurat_object <- FindClusters(seurat_object, resolution = cluster_res)
+    
+    #to View metadata
+    #seurat_object@meta.data
+    #run non-linear dimensional reduction (UMAP/tSNE)
+    seurat_object <- RunUMAP(seurat_object, dims = 1:npc)
+    
+    rst_figures <- append(rst_figures, list(DimPlot(seurat_object, reduction = "umap") + labs(color = "cluster \n(from PCA)", title = '') + theme(text = element_text(size = 10))  )) 
+    
+    
+    # add meta data: cluster found by matt 'data/Matt_data_cell_barcodes_and_cluster.csv'
+    df_matt = read.csv('data/cluster_annotation.csv')
+    group_from_matt = unlist(lapply(colnames(seurat_object), function(x){ifelse(x %in% df_matt$barcode_seq,df_matt$groups[df_matt$barcode_seq == x], NA)}))
+    seurat_object <- AddMetaData(seurat_object,  metadata = group_from_matt, col.name = 'group_from_matt')
+    
+    rst_figures <- append(rst_figures, list(
+      DimPlot(seurat_object, reduction = "umap", group.by = 'group_from_matt')+labs(color = str_wrap("Known cell type from Matt's paper",15),title = '')+ theme(text = element_text(size = 10)),
+      FeaturePlot(seurat_object, reduction = "umap", features = 'nCount_RNA')+labs(color = "UMI count",title = '')+ theme(text = element_text(size = 10)),
+    FeaturePlot(seurat_object, reduction = "umap", features = 'nFeature_RNA')+labs(color = str_wrap("Feature count (isoform/gene)",15),title = '')+ theme(text = element_text(size = 10))
+    ))
+    
+    
+    plot_pc <- ElbowPlot(seurat_object)+labs(title = 'SD explained by each PC') + theme(text = element_text(size = 10))
+    plot_umap <- grid.arrange(plot_pc, tableGrob(rst_table), rst_figures[[1]], rst_figures[[2]], rst_figures[[3]], rst_figures[[4]], ncol=2, top=textGrob(fig_name))
+    list(plot_umap, seurat_object)
+}
+```
+
+
+# Make seurat object for Cell ranger Sockeye and BLAZE 
+
+## Seurat objects
+```{r, message=FALSE, warning=FALSE, fig.width=8,fig.height = 10}
+# Cellranger
+plots <- plot_umap_matt(gene_CR_pmth, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7,fig_name = 'Cellranger+FLAME (Transcript counts, SCMixology)')
+umap_object_C <- plots[[2]]
+
+plots <- plot_umap_matt(gene_S_pmth, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7,fig_name = 'Sockeye+FLAME (Transcript counts, SCMixology)')
+umap_object_S <- plots[[2]]
+
+plots <- plot_umap_matt(gene_B_pmth, min.features = 200,max.feature = 999999999, npc = 10, cluster_res = 0.7,fig_name = 'BLAZE+FLAME (Transcript counts, SCMixology)')
+umap_object_B <- plots[[2]]
+
+
+
+VlnPlot(umap_object_S, features = c("nCount_RNA", "nFeature_RNA"), group.by = "group_from_matt")
+```
+
+
+# Summary stats for ovelap between empty drops and seurat objects  
+
+```{r}
+#Make a df with FDR of TRUE cells 
+#CR
+is.true.cell_CR <- as.data.frame(e.out@listData[["FDR"]], e.out@rownames)
+is.true.cell_CR <- is.true.cell_CR %>% filter(is.true.cell_CR$`e.out@listData[["FDR"]]` <= 0.05)
+is.true.cell_CR <- tibble::rownames_to_column(is.true.cell_CR, "cell_id")
+
+#Sockeye
+is.true.cell_S <- as.data.frame(e.out_S@listData[["FDR"]], e.out_S@rownames)
+is.true.cell_S <- is.true.cell_S %>% filter(is.true.cell_S$`e.out_S@listData[["FDR"]]` <= 0.05)
+is.true.cell_S <- tibble::rownames_to_column(is.true.cell_S, "cell_id")
+
+#BLAZE
+is.true.cell_B <- as.data.frame(e.out_B@listData[["FDR"]], e.out_B@rownames)
+is.true.cell_B <- is.true.cell_B %>% filter(is.true.cell_B$`e.out_B@listData[["FDR"]]` <= 0.05)
+is.true.cell_B <- tibble::rownames_to_column(is.true.cell_B, "cell_id")
+
+#Fucntion for retriving the suerat cells and clsuter in D.f 
+overlap_true_cell <- function(seurat_object){
+  seurat_cluster.df = as.data.frame(seurat_object$seurat_clusters) 
+  seurat_cluster.df <- tibble::rownames_to_column(seurat_cluster.df, "cell_id")
+  list(seurat_cluster.df)
+}
+
+#obtain cluster d.f from seurat object
+overlap_CR <- overlap_true_cell(umap_object_C)
+overlap_B <- overlap_true_cell(umap_object_B)
+overlap_S <- overlap_true_cell(umap_object_S)
+
+#Check overlaps between Seurat object and true cells 
+#False = Empty drops
+summary(overlap_CR[[1]]$cell_id %in% is.true.cell_CR$cell_id)
+summary(overlap_B[[1]]$cell_id %in% is.true.cell_B$cell_id)
+summary(overlap_S[[1]]$cell_id %in% is.true.cell_S$cell_id)
+
+
+```
+
+
+# Add meta data to seurat objects so UMAP plots can coloured
+```{r, fig.width=10,fig.height = 3}
+#Function to use for meta data
+True.cells <- function(e.out){
+  cells.1= as.data.frame(e.out@rownames)
+  cells.2= as.data.frame(e.out$FDR)
+  T.F.cells = cbind(cells.1, cells.2)
+  T.F.cells <- data.frame(T.F.cells[,-1], row.names=T.F.cells[,1]) #make col row names
+    #change col anmes 
+  setnames(T.F.cells, c('FDR'))
+  T.F.cells %>%
+    mutate(FDR = case_when(FDR < 0.05 ~ "Cells",
+                           FDR > 0.05 ~ "Empty_drops"
+                           ))
+}
+
+ 
+cells_CR <- True.cells(e.out)
+cells_S <- True.cells(e.out_S)
+cells_B <- True.cells(e.out_B)
+
+#this needs some fixing need to swap around the TRU FALSEW statment for FDR.
+umap_object_C <- AddMetaData(umap_object_C,  metadata = cells_CR, col.name = 'is.cell')
+umap_object_S <- AddMetaData(umap_object_S,  metadata = cells_S, col.name = 'is.cell')
+umap_object_B <- AddMetaData(umap_object_B,  metadata = cells_B, col.name = 'is.cell')
+
+
+#Plot Empty drops on Gene UMAP
+
+grid.arrange( DimPlot(umap_object_C, reduction = "umap", group.by = 'is.cell', ) + labs(color = "is.cell", title = 'CellRanger') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'is.cell') + labs(color = "is.cell", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_B, reduction = "umap", group.by = 'is.cell') + labs(color = "is.cell", title = 'BLAZE') + theme(text = element_text(size = 10)),
+              top=textGrob('Empty drops vs real cells'), ncol=3)
+
+```
+
+# Plot UMAPS coloured by edit distacne and empty drops.
+```{r, fig.width=8,fig.height = 4}
+
+edit_dist_S <- read.csv("data/matt_addition_sy_bc_ed.csv", header = T)
+
+edit_dist_S_2 <- dplyr::filter(edit_dist_S, edit_dist_S$ED <= 2)
+edit_dist_S_2 <- data.frame(edit_dist_S_2[,-1], row.names=edit_dist_S_2[,1]) #make col row names
+names(edit_dist_S_2)[1] <- "ed"
+edit_dist_S_2$ed <- "TRUE"
+
+umap_object_S <- AddMetaData(umap_object_S,  metadata = edit_dist_S_2, col.name = 'ed')
+
+grid.arrange( DimPlot(umap_object_S, reduction = "umap", group.by = 'is.cell') + labs(color = "Empty_drops", title = 'CellRanger') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'ed', cols = c("#00BFC4")) + labs(color = "ed <= 3", title = 'Sockeye') + theme(text = element_text(size = 10)), ncol=2)
+
+
+#Pull out cells that are empty drops and have small edit distance
+cells_S_real <- dplyr::filter(cells_S, cells_S$FDR == "Cells")
+cells_S_real <- rownames_to_column(cells_S_real, "Barcode")
+
+edit_dist_S_2 <- rownames_to_column(edit_dist_S_2, "Barcode")
+
+#join objects from 
+df <- join_all(list(cells_S_real,edit_dist_S_2), by = 'Barcode', type = 'inner')
+
+#prepare meta data
+df <- data.frame(df[,-1], row.names=df[,1]) #make col row names
+df$ed_cell <- "ed_cell"
+df <- df[3]
+
+#add meta data
+umap_object_S <- AddMetaData(umap_object_S,  metadata = df, col.name = 'ed_cell')
+
+#filter for empty drops
+cells_S_empty <- dplyr::filter(cells_S, cells_S$FDR == "Empty_drops")
+cells_S_empty <- rownames_to_column(cells_S_empty, "Barcode")
+#make combined data frame 
+df2<- as.data.frame(c(cells_S_empty$Barcode, edit_dist_S_2$Barcode))
+
+#remove duplicated rows and add row names
+df2 <- df2 %>% distinct(df2[1])
+df2$Union <- "True"
+df2 <- data.frame(df2[,-1], row.names=df2[,1]) #make col row names
+
+#add meta data
+umap_object_S <- AddMetaData(umap_object_S,  metadata = df2, col.name = 'U')
+
+#Plot
+grid.arrange( DimPlot(umap_object_S, reduction = "umap", group.by = 'is.cell') + labs(color = "Empty_drops", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'ed', cols = c("red"), na.value = "grey") + labs(color = "ed <= 2", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'ed_cell', cols = c("blue"), na.value = "grey") + labs(color = "'True' Cells \n with ed <=2", title = 'Sockeye') + theme(text = element_text(size = 10)),
+              DimPlot(umap_object_S, reduction = "umap", group.by = 'U', cols = c("orange"), na.value = "grey") + labs(color = "ed <=2 or \n Empty drops", title = 'Sockeye') + theme(text = element_text(size = 10)) ,ncol=2)
+
+
+```
