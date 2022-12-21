@@ -17,6 +17,6 @@ This page contains the scripts/codes accociated to the analysis in manuscript "I
 [Marker gene](SC_Marker_gene.html)
 
 Empty drops analysis:
-* [empty_drops_analysis for SCMIXOLOGY data](empty_drops_SCMIXOLOGY.html)
-* [empty_drops_analysis for SCMIXOLOGY data (filter out barcodes with <1000 features in sockeye)](empty_drops_scmixology_-1000ft_sockeye.html)
-* [empty_drops_analysis for_hiPSC PromethION data](empty_drops_transcripts.html)
+* [Empty drops analysis for SCMIXOLOGY data](empty_drops_SCMIXOLOGY.html)
+* [Empty drops analysis for SCMIXOLOGY data (filter out barcodes with <1000 features in sockeye)](empty_drops_scmixology_-1000ft_sockeye.html)
+* [Empty drops analysis for hiPSC PromethION data](empty_drops_transcripts.html)
